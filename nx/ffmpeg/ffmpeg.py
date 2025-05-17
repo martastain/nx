@@ -59,6 +59,12 @@ async def cancel_task_if_needed(task: asyncio.Task[None] | None) -> None:
 
 
 class FFLog:
+    """Simple fifo log for ffmpeg process
+
+    This is used to capture last lines of the ffmpeg process
+    stderr output in case of an error.
+    """
+
     def __init__(self) -> None:
         self._log: list[str] = []
         self._max_size = 30
@@ -80,14 +86,20 @@ class FFLog:
 
 
 async def get_stderr_line(process: asyncio.subprocess.Process) -> str:
+    """Return a line from the stderr of the process.
+
+    - Line is returned as a string.
+    - At the end of the stream, an EndOfStreamError is raised.
+    - If the line cannot be decoded, a ValueError is raised.
+    """
     assert process.stderr is not None
     line_b = await process.stderr.readline()
     if not line_b:
         raise EndOfStreamError("FFmpeg process ended unexpectedly")
     try:
         line = line_b.decode("utf-8").strip()
-    except ValueError:
-        return ""
+    except Exception as e:
+        raise ValueError(f"Failed to decode line: {e}")
     return line
 
 
