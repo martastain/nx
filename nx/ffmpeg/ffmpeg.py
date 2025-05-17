@@ -15,6 +15,10 @@ class FFmpegAbortedError(FFmpegError):
     pass
 
 
+class EndOfStreamError(FFmpegError):
+    pass
+
+
 @dataclass
 class FFmpegProgress:
     speed: float = 0.0
@@ -44,6 +48,63 @@ async def abort_watcher(
             return
 
 
+async def cancel_task_if_needed(task: asyncio.Task[None] | None) -> None:
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+class FFLog:
+    def __init__(self) -> None:
+        self._log: list[str] = []
+        self._max_size = 30
+
+    def add(self, line: str) -> None:
+        self._log.append(line)
+        if len(self._log) > self._max_size:
+            self._log.pop(0)
+
+    def get_error_message(self) -> str:
+        if not self._log:
+            return "No log available"
+        message = self._log[-1]
+        if len(self._log) == 1:
+            return message
+        full_log = "\n".join(self._log)
+        message += f"\n\n{full_log}"
+        return message
+
+
+async def get_stderr_line(process: asyncio.subprocess.Process) -> str:
+    assert process.stderr is not None
+    line_b = await process.stderr.readline()
+    if not line_b:
+        raise EndOfStreamError("FFmpeg process ended unexpectedly")
+    try:
+        line = line_b.decode("utf-8").strip()
+    except ValueError:
+        return ""
+    return line
+
+
+def update_progress_object(progress: FFmpegProgress, line: str) -> bool:
+    progress_changed = False
+    match = re.search(r"out_time_ms=(\d+)", line)
+    if match:
+        progress.position = float(match.group(1)) / 1_000_000
+        progress_changed = True
+
+    match = re.search(r"speed=(\d+\.\d+)", line)
+    if match:
+        progress.speed = float(match.group(1))
+
+    return progress_changed
+
+
 async def ffmpeg(
     cmd: list[str],
     progress_handler: Callable[[FFmpegProgress], Awaitable[None]] | None = None,
@@ -51,16 +112,7 @@ async def ffmpeg(
     check_abort: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     progress = FFmpegProgress()
-    progress_changed: bool = False
-    return_code: int | None = None
-
-    fflog: list[str] = []
-    
-    def write_log(line: str) -> None:
-        fflog.append(line)
-        if len(fflog) > 100:
-            fflog.pop(0)
-        logger.trace(line)
+    fflog = FFLog()
 
     #
     # Create ffmpeg command
@@ -79,60 +131,37 @@ async def ffmpeg(
     #
 
     abort_task: asyncio.Task[None] | None = None
+
     if check_abort:
         abort_task = asyncio.create_task(abort_watcher(process, check_abort))
 
     try:
         while True:
-            assert process.stderr is not None
-            progress_changed = False
-            line_b = await process.stderr.readline()
-            if not line_b:
-                break
             try:
-                line = line_b.decode("utf-8").strip()
-            except Exception:
+                line = await get_stderr_line(process)
+            except EndOfStreamError:
+                break
+            except ValueError:
                 continue
 
-            if progress_handler:
-                match = re.search(r"speed=(\d+\.\d+)", line)
-                if match:
-                    progress.speed = float(match.group(1))
-
-                match = re.search(r"out_time_ms=(\d+)", line)
-                if match:
-                    progress.position = float(match.group(1)) / 1_000_000
-                    progress_changed = True
-
-                if progress_changed:
-                    await progress_handler(progress)
+            fflog.add(line)
 
             for handler in custom_handlers or []:
                 await handler(line)
 
-            write_log(line)
+            if not progress_handler:
+                continue
 
+            if update_progress_object(progress, line):
+                await progress_handler(progress)
 
         await process.wait()
 
-        if process.returncode != 0:
-            return_code = process.returncode
-
     finally:
-        if abort_task:
-            abort_task.cancel()
-            try:
-                await abort_task
-            except asyncio.CancelledError:
-                pass
+        await cancel_task_if_needed(abort_task)
 
     if check_abort and await check_abort():
         raise FFmpegAbortedError("FFmpeg process was aborted by the user")
 
-    if return_code:
-        message = fflog[-1] if fflog else "No log available"
-        if fflog:
-            full_log = "\n".join(fflog)
-            message += f"\n\n{full_log}"
-
-        raise FFmpegError(message)
+    if process.returncode:
+        raise FFmpegError(fflog.get_error_message())

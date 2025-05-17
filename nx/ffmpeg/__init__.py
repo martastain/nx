@@ -1,4 +1,11 @@
-__all__ = ["ffmpeg", "ffprobe", "FFmpegError", "FFProbeError", "FFmpegAbortedError"]
+__all__ = [
+    "ffmpeg",
+    "ffprobe",
+    "FFmpegError",
+    "FFProbeError",
+    "FFmpegAbortedError",
+    "FFmpegProgress",
+]
 
-from .ffmpeg import ffmpeg, FFmpegError, FFmpegAbortedError
-from .ffprobe import ffprobe, FFProbeError
+from .ffmpeg import FFmpegAbortedError, FFmpegError, FFmpegProgress, ffmpeg
+from .ffprobe import FFProbeError, ffprobe
