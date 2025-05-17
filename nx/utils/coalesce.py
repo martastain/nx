@@ -84,4 +84,4 @@ class Coalescer(Generic[T]):
                 self.current_futures.pop(key, None)
 
 
-coalescer = Coalescer()
+coalesce = Coalescer()

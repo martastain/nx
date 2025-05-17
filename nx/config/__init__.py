@@ -74,5 +74,5 @@ class ConfigProxy(Generic[T]):
         return cast(T, self._config)
 
 
-_config_proxy = ConfigProxy()
+_config_proxy = ConfigProxy()  # type: ignore
 config = cast(ConfigModel, _config_proxy)

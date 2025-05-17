@@ -1,6 +1,6 @@
 __all__ = [
     "db",
-    "coalece",
+    "coalesce",
     "config",
     "initialize",
     "log",
@@ -12,4 +12,4 @@ from nx.db import db
 from nx.initialize import initialize
 from nx.logging import logger as log
 from nx.redis import redis
-from nx.utils import coalece
+from nx.utils import coalesce

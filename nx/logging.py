@@ -31,8 +31,9 @@ def _serializer(message: "Message") -> None:
     text = record["message"]
     module = record["extra"].pop("module", None) or record["name"]
 
-    for prefix in logger_configuration.get("strip_prefixes", []):
-        module = module.removeprefix(f"{prefix}.")
+    if isinstance(module, str):
+        for prefix in logger_configuration.get("strip_prefixes", []):
+            module = module.removeprefix(f"{prefix}.")
 
     if config.log_mode == "json":
         payload = {

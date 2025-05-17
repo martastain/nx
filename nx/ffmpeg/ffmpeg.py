@@ -38,8 +38,8 @@ async def abort_watcher(
 ) -> None:
     while True:
         await asyncio.sleep(1)
-        if check_abort and await check_abort():
-            logger.log.warning("[AbortWatcher] Aborting FFmpeg!")
+        if await check_abort():
+            logger.warning("[AbortWatcher] Aborting FFmpeg!")
             process.terminate()  # or use `kill()` if needed
             return
 
@@ -78,7 +78,7 @@ async def ffmpeg(
     # Create abort controller
     #
 
-    abort_task: asyncio.Task | None = None
+    abort_task: asyncio.Task[None] | None = None
     if check_abort:
         abort_task = asyncio.create_task(abort_watcher(process, check_abort))
 
@@ -86,11 +86,11 @@ async def ffmpeg(
         while True:
             assert process.stderr is not None
             progress_changed = False
-            line = await process.stderr.readline()
-            if not line:
+            line_b = await process.stderr.readline()
+            if not line_b:
                 break
             try:
-                line = line.decode("utf-8").strip()
+                line = line_b.decode("utf-8").strip()
             except Exception:
                 continue
 

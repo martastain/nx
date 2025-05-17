@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any, cast
 
 from ..exceptions import BaseNXError
 
@@ -8,7 +9,7 @@ class FFProbeError(BaseNXError):
     """Exception raised when metadata extraction fails."""
 
 
-async def ffprobe(path: str):
+async def ffprobe(path: str) -> dict[str, Any]:
     """
     Run ffprobe on the given path and return the output as a dictionary.
     """
@@ -30,4 +31,4 @@ async def ffprobe(path: str):
     if process.returncode != 0:
         raise FFProbeError(f"{stderr.decode()}")
 
-    return json.loads(stdout.decode())
+    return cast(dict[str, Any], json.loads(stdout.decode()))
