@@ -25,15 +25,7 @@ class FFmpegProgress:
     position: float = 0.0
 
 
-BASE_FFMPEG_CMD = [
-    "ffmpeg",
-    "-y",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-progress",
-    "pipe:2",
-]
+BASE_FFMPEG_CMD = ["ffmpeg", "-y", "-hide_banner", "-progress", "pipe:2"]
 
 
 async def abort_watcher(
