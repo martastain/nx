@@ -58,7 +58,7 @@ class ConfigProxy(Generic[T]):
                 continue
 
             key = key.lower().removeprefix(full_env_prefix)
-            if key not in self._fields:
+            if key in self._fields:
                 env_data[key] = value
 
         self._config = self._config_model(**env_data)
