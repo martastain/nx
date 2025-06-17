@@ -77,4 +77,3 @@ PostgresPassword = Annotated[
         examples=["nx"],
     ),
 ]
-

@@ -4,7 +4,7 @@ import sys
 import time
 from typing import TYPE_CHECKING, NotRequired, TypedDict, Unpack
 
-from loguru import logger
+from loguru import logger as loguru_logger
 
 from nx.config import config
 from nx.utils import indent, json_dumps
@@ -63,6 +63,9 @@ def _serializer(message: "Message") -> None:
                 contextual_info += f"{k}: {v}\n"
             if contextual_info:
                 _write_stderr(indent(contextual_info))
+
+
+logger = loguru_logger.bind()
 
 
 def init_logger(**kwargs: Unpack[LoggerConfiguration]) -> None:
