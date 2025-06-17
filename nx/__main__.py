@@ -18,7 +18,7 @@ from typing import Any
 import nx
 from nx.version import __version__
 
-nx.initialize()
+nx.initialize(standalone=True)
 
 
 GUNICORN_PID_FILE = "/tmp/gunicorn.pid"
@@ -98,6 +98,8 @@ if __name__ == "__main__":
         serve()
     elif "reload" in sys.argv:
         reload()
+    elif "debug" in sys.argv:
+        print(nx.config.model_dump_json(indent=2, exclude_unset=True))
     else:
         nx.log.error("Invalid command. Use 'version', 'run', 'serve', or 'reload'.")
         sys.exit(1)
