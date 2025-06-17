@@ -1,6 +1,7 @@
 __all__ = ["db"]
 
 import asyncio
+import sys
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import asyncpg
 
 from nx.config import config
+from nx.logging import logger
 from nx.utils import json_dumps, json_loads, normalize_uuid
 
 if TYPE_CHECKING:
@@ -58,10 +60,16 @@ class DB:
         async with _connection_lock:
             if self._pool is not None:
                 return  # Double check
-            self._pool = await asyncpg.create_pool(
-                str(config.postgres_url),
-                init=self._init_connection,
-            )
+
+            try:
+                self._pool = await asyncpg.create_pool(
+                    str(config.postgres_url),
+                    init=self._init_connection,
+                )
+            except Exception as e:
+                logger.error(f"Failed to connect to the database: {e}")
+                logger.error("Unrecoverable error, exiting.")
+                sys.exit(1)
 
     @asynccontextmanager
     async def acquire(

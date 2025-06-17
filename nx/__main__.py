@@ -9,6 +9,7 @@ without any modifications.
 It is not intended to be used in production.
 """
 
+import asyncio
 import os
 import signal
 import subprocess
@@ -89,6 +90,11 @@ def reload() -> None:
         nx.log.error("Gunicorn PID file not found.")
 
 
+async def debug() -> None:
+    res = await nx.db.fetch("SELECT * FROM config")
+    print(res)
+
+
 if __name__ == "__main__":
     if "version" in sys.argv:
         version()
@@ -100,6 +106,7 @@ if __name__ == "__main__":
         reload()
     elif "debug" in sys.argv:
         print(nx.config.model_dump_json(indent=2, exclude_unset=True))
+        asyncio.run(debug())
     else:
         nx.log.error("Invalid command. Use 'version', 'run', 'serve', or 'reload'.")
         sys.exit(1)
