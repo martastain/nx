@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Any, cast
 
-from ..exceptions import BaseNXError
+from nx.exceptions import BaseNXError
 
 
 class FFProbeError(BaseNXError):
@@ -10,9 +10,7 @@ class FFProbeError(BaseNXError):
 
 
 async def ffprobe(path: str) -> dict[str, Any]:
-    """
-    Run ffprobe on the given path and return the output as a dictionary.
-    """
+    """Run ffprobe on the given path and return the output as a dictionary."""
     process = await asyncio.create_subprocess_exec(
         "ffprobe",
         "-v",
@@ -31,4 +29,4 @@ async def ffprobe(path: str) -> dict[str, Any]:
     if process.returncode != 0:
         raise FFProbeError(f"{stderr.decode()}")
 
-    return cast(dict[str, Any], json.loads(stdout.decode()))
+    return cast("dict[str, Any]", json.loads(stdout.decode()))

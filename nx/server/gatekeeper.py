@@ -25,7 +25,7 @@ async def authenticate(request: Request) -> User:
             return await authenticate_api_key(api_key)
     if session_id := request.cookies.get("session_id"):
         return await authenticate_session(session_id)
-    raise UnauthorizedError()
+    raise UnauthorizedError
 
 
 class GatekeeperMiddleware(BaseHTTPMiddleware):

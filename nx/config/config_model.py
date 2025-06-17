@@ -38,12 +38,11 @@ class ConfigModel(BaseModel):
     @classmethod
     def validate_log_level(cls, v: Any) -> LogLevel:
         assert isinstance(v, str), "Log level must be a string"
-        return cast(LogLevel, v.upper())
+        return cast("LogLevel", v.upper())
 
     @model_validator(mode="after")
     def construct_final_postgres_url(self) -> Self:
         """Synchronize the postgres_url with the individual fields."""
-
         parsed = urlparse(str(self.postgres_url))
         # Extract the relevant components
         user = parsed.username if self.postgres_user is None else self.postgres_user
@@ -81,4 +80,3 @@ class ConfigModel(BaseModel):
 
     def initialize(self, **kwargs: Any) -> None:
         _ = kwargs
-        pass

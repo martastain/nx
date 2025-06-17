@@ -1,5 +1,4 @@
-"""
-nx cli
+"""nx cli
 ======
 
 This entrypoint is used to run nx in a development environment.
@@ -22,12 +21,12 @@ from nx.version import __version__
 nx.initialize(standalone=True)
 
 
-GUNICORN_PID_FILE = "/tmp/gunicorn.pid"
+GUNICORN_PID_FILE = "/tmp/gunicorn.pid"  # noqa: S108
 
 
 def version() -> None:
     """Show the version."""
-    print(__version__, end="")
+    print(__version__, end="")  # noqa: T201
 
 
 def run(*args: Any) -> None:
@@ -37,7 +36,6 @@ def run(*args: Any) -> None:
 
 def serve() -> None:
     """Run the server."""
-
     cmd = [
         "gunicorn",
         "--bind",
@@ -54,7 +52,7 @@ def serve() -> None:
         "nx.server.app:app",
     ]
 
-    process = subprocess.Popen(cmd)
+    process = subprocess.Popen(cmd)  # noqa: S603
     gunicorn_pid = process.pid
 
     def handle_sigterm(signum, frame) -> None:  # type: ignore[no-untyped-def]
@@ -91,8 +89,9 @@ def reload() -> None:
 
 
 async def debug() -> None:
+    print(nx.config.model_dump_json(indent=2, exclude_unset=True))  # noqa: T201
     res = await nx.db.fetch("SELECT * FROM config")
-    print(res)
+    print(res)  # noqa: T201
 
 
 if __name__ == "__main__":
@@ -105,7 +104,6 @@ if __name__ == "__main__":
     elif "reload" in sys.argv:
         reload()
     elif "debug" in sys.argv:
-        print(nx.config.model_dump_json(indent=2, exclude_unset=True))
         asyncio.run(debug())
     else:
         nx.log.error("Invalid command. Use 'version', 'run', 'serve', or 'reload'.")

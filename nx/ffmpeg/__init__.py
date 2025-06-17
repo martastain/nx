@@ -1,10 +1,10 @@
 __all__ = [
-    "ffmpeg",
-    "ffprobe",
-    "FFmpegError",
     "FFProbeError",
     "FFmpegAbortedError",
+    "FFmpegError",
     "FFmpegProgress",
+    "ffmpeg",
+    "ffprobe",
 ]
 
 from .ffmpeg import FFmpegAbortedError, FFmpegError, FFmpegProgress, ffmpeg

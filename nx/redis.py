@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from redis import asyncio as aioredis
 from redis.asyncio.client import PubSub
 
+from nx.config import config
 from nx.logging import logger
 
 T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
@@ -19,12 +20,12 @@ def ensure_connection(func: T) -> T:
             await self.connect()
         return await func(self, *args, **kwargs)
 
-    return wrapper  # type: ignore
+    return wrapper  # type: ignore[return-value]
 
 
 class Redis:
     _instance: "Redis | None" = None
-    _pool: aioredis.Redis = aioredis.from_url("redis://redis")  # type: ignore
+    _pool: aioredis.Redis = aioredis.from_url(config.redis_url)  # type: ignore[no-untyped-call]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "Redis":
         _ = args, kwargs
@@ -52,8 +53,7 @@ class Redis:
     @ensure_connection
     async def get(self, namespace: str, key: str) -> Any:
         """Get a value from Redis"""
-        value = await self._pool.get(f"{namespace}:{key}")
-        return value
+        return await self._pool.get(f"{namespace}:{key}")
 
     @ensure_connection
     async def get_json(self, namespace: str, key: str) -> Any:
@@ -71,7 +71,7 @@ class Redis:
         self,
         namespace: str,
         key: str,
-        value: str | bytes | int | float | bool | None,
+        value: str | bytes | float | bool | None,
         *,
         ttl: int = 0,
     ) -> None:
@@ -82,7 +82,7 @@ class Redis:
         command: list[Any] = ["set", f"{namespace}:{key}", value]
         if ttl:
             command.extend(["ex", str(ttl)])
-        await self._pool.execute_command(*command)  # type: ignore
+        await self._pool.execute_command(*command)  # type: ignore[no-untyped-call]
 
     @ensure_connection
     async def set_json(

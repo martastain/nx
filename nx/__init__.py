@@ -1,7 +1,7 @@
 __all__ = [
-    "db",
     "coalesce",
     "config",
+    "db",
     "initialize",
     "log",
     "redis",

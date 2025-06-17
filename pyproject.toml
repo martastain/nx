@@ -35,19 +35,28 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "C",   # flake8-comprehensions
-    "ISC", # flake8-implicit-str-concat
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-]
+select = ["ALL"]
 
 ignore = [
-  "ISC001", # incompatible with formatting
+  "BLE",     # FIXME: blind exceptions. I don't like them either, but they are useful in some cases
+  "COM812",  # OK: messes with formatter
+  "D",       # FIXME: docstrings. Naaah.
+  "EM",      # OK: String literals in exception messages (why not?)
+  "FBT",     # Boolean positional argument (WTF?)
+  "FIX002",  # FIXME: TODOs
+  "ISC001",  # OK: Incompatible with formatting
+  "PLR2004", # OK: Magic numbers (just a few)
+  "PTH",     # FIXME: path-like objects
+  "S101",    # OK: I like asserts. They make mypy happy
+  "S104",    # OK: bind to all interfaces (We need this)
+  "S110",    # OK: except: pass 
+  "S608",    # FIXME: sql injections. let's wait for template strings
+  "SIM105",  # OK: contextlib.suppress is ugly
+  "TD002",   # Author name in TODOs
+  "TD003",   # Issue link in TODOs
+  "TRY003",  # OK: Avoid specicying long messages outside of exceptions
+  "ANN",     # FIXME: Any
+  "ERA",     # Commented out code
 ]
 
 [tool.mypy]

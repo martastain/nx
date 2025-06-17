@@ -56,11 +56,10 @@ def _serializer(message: "Message") -> None:
             # Put the module name and extra context info in a separate block
             contextual_info = ""
             for k, v in record["extra"].items():
-                # if k in CONTEXT_KEY_BLACKLIST:
-                #     continue
+                val = v
                 if k == "traceback":
-                    v = f"\n{indent(v)}"
-                contextual_info += f"{k}: {v}\n"
+                    val = f"\n{indent(v)}"
+                contextual_info += f"{k}: {val}\n"
             if contextual_info:
                 _write_stderr(indent(contextual_info))
 

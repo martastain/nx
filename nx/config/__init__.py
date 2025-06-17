@@ -39,9 +39,9 @@ class ConfigProxy(Generic[T]):
             if not key.lower().startswith(full_env_prefix):
                 continue
 
-            key = key.lower().removeprefix(full_env_prefix)
-            if key in self._fields:
-                env_data[key] = value
+            fkey = key.lower().removeprefix(full_env_prefix)
+            if fkey in self._fields:
+                env_data[fkey] = value
 
         self._config = self._config_model(**env_data)
 
@@ -51,5 +51,5 @@ class ConfigProxy(Generic[T]):
         return getattr(self._config, key)
 
 
-_config_proxy = ConfigProxy()  # type: ignore
-config = cast(ConfigModel, _config_proxy)
+_config_proxy = ConfigProxy()  # type: ignore[var-annotated]
+config = cast("ConfigModel", _config_proxy)

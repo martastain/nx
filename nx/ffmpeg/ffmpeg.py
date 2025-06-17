@@ -3,8 +3,8 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from ..exceptions import BaseNXError
-from ..logging import logger
+from nx.exceptions import BaseNXError
+from nx.logging import logger
 
 
 class FFmpegError(BaseNXError):
@@ -91,7 +91,7 @@ async def get_stderr_line(process: asyncio.subprocess.Process) -> str:
     try:
         line = line_b.decode("utf-8").strip()
     except Exception as e:
-        raise ValueError(f"Failed to decode line: {e}")
+        raise ValueError(f"Failed to decode line: {e}") from e
     return line
 
 

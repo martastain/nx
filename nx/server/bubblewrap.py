@@ -61,9 +61,9 @@ def handle_exception_group(exc: ExceptionGroup) -> JSONResponse:
         if isinstance(e, BaseException):
             tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
             nx.log.error(f"{e.__class__.__name__} - {e}\n{tb}")
-            messages.append(f"{e.__class__.__name__}: {str(e)}")
+            messages.append(f"{e.__class__.__name__}: {e!s}")
         else:
-            messages.append(f"Non-standard exception: {repr(e)}")
+            messages.append(f"Non-standard exception: {e!r}")
 
     return JSONResponse(
         {
