@@ -39,7 +39,7 @@ class Redis:
     async def connect(self) -> None:
         """Create a Redis connection pool"""
         if self._pool is None:
-            self._pool = aioredis.from_url(config.redis_url)  # type: ignore[no-untyped-call]
+            self._pool = aioredis.from_url(str(config.redis_url))  # type: ignore[no-untyped-call]
         assert self._pool is not None, "Redis pool is not initialized"
         try:
             await self._pool.set("CONN", "alive")
