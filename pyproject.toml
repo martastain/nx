@@ -1,6 +1,6 @@
 [project]
 name = "nx"
-version = "0.0.1"
+version = "0.0.2"
 description = "Very opinionated set of tools"
 readme = "README.md"
 requires-python = ">=3.12"
