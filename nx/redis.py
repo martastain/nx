@@ -130,6 +130,13 @@ class Redis:
             await self.connect()
         await self._pool.publish(self.channel, message)
 
+    @ensure_connection
+    async def ping(self) -> None:
+        """Ping the Redis server to check connection"""
+        if not self.connected:
+            await self.connect()
+        await self._pool.execute_command("ping")  # type: ignore[no-untyped-call]
+
     async def iterate(self, namespace: str) -> AsyncGenerator[tuple[str, str]]:
         """Iterate over stored keys
 
