@@ -25,7 +25,7 @@ def ensure_connection(func: T) -> T:
 
 class Redis:
     _instance: "Redis | None" = None
-    _pool: aioredis.Redis = aioredis.from_url(config.redis_url)  # type: ignore[no-untyped-call]
+    _pool: aioredis.Redis | None = None
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "Redis":
         _ = args, kwargs
@@ -38,6 +38,9 @@ class Redis:
 
     async def connect(self) -> None:
         """Create a Redis connection pool"""
+        if self._pool is None:
+            self._pool = aioredis.from_url(config.redis_url)  # type: ignore[no-untyped-call]
+        assert self._pool is not None, "Redis pool is not initialized"
         try:
             await self._pool.set("CONN", "alive")
         except ConnectionError:
@@ -53,6 +56,7 @@ class Redis:
     @ensure_connection
     async def get(self, namespace: str, key: str) -> Any:
         """Get a value from Redis"""
+        assert self._pool is not None, "Redis pool is not initialized"
         return await self._pool.get(f"{namespace}:{key}")
 
     @ensure_connection
@@ -82,6 +86,7 @@ class Redis:
         command: list[Any] = ["set", f"{namespace}:{key}", value]
         if ttl:
             command.extend(["ex", str(ttl)])
+        assert self._pool is not None, "Redis pool is not initialized"
         await self._pool.execute_command(*command)  # type: ignore[no-untyped-call]
 
     @ensure_connection
@@ -103,17 +108,20 @@ class Redis:
     @ensure_connection
     async def delete(self, namespace: str, key: str) -> None:
         """Delete a record from Redis"""
+        assert self._pool is not None, "Redis pool is not initialized"
         await self._pool.delete(f"{namespace}:{key}")
 
     @ensure_connection
     async def incr(self, namespace: str, key: str) -> int:
         """Increment a value in Redis"""
+        assert self._pool is not None, "Redis pool is not initialized"
         res: int = await self._pool.incr(f"{namespace}:{key}")
         return res
 
     @ensure_connection
     async def expire(self, namespace: str, key: str, ttl: int) -> None:
         """Set a TTL for a key in Redis"""
+        assert self._pool is not None, "Redis pool is not initialized"
         await self._pool.expire(f"{namespace}:{key}", ttl)
 
     @ensure_connection
@@ -121,20 +129,19 @@ class Redis:
         """Create a Redis pubsub connection"""
         if not self.connected:
             await self.connect()
+        assert self._pool is not None, "Redis pool is not initialized"
         return self._pool.pubsub()
 
     @ensure_connection
     async def publish(self, message: str) -> None:
         """Publish a message to a Redis channel"""
-        if not self.connected:
-            await self.connect()
+        assert self._pool is not None, "Redis pool is not initialized"
         await self._pool.publish(self.channel, message)
 
     @ensure_connection
     async def ping(self) -> None:
         """Ping the Redis server to check connection"""
-        if not self.connected:
-            await self.connect()
+        assert self._pool is not None, "Redis pool is not initialized"
         await self._pool.execute_command("ping")  # type: ignore[no-untyped-call]
 
     async def iterate(self, namespace: str) -> AsyncGenerator[tuple[str, str]]:
@@ -145,6 +152,7 @@ class Redis:
         """
         if not self.connected:
             await self.connect()
+        assert self._pool is not None, "Redis pool is not initialized"
 
         async for key in self._pool.scan_iter(match=f"{namespace}:*"):
             key_without_ns = key.decode("ascii").removeprefix(f"{namespace}:")
