@@ -68,7 +68,10 @@ class DB:
                 )
             except Exception as e:
                 logger.error(f"Failed to connect to the database: {e}")
-                logger.error("Unrecoverable error, exiting.")
+                logger.error(
+                    f"Unrecoverable error while "
+                    f"connecting to '{config.postgres_url}'. Exiting."
+                )
                 sys.exit(1)
 
     @asynccontextmanager
