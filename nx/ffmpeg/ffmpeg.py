@@ -109,11 +109,13 @@ def update_progress_object(progress: FFmpegProgress, line: str) -> bool:
     return progress_changed
 
 
-async def ffmpeg(
+async def ffmpeg(  # noqa: C901, PLR0913
     cmd: list[str],
     progress_handler: Callable[[FFmpegProgress], Awaitable[None]] | None = None,
     custom_handlers: list[Callable[[str], Awaitable[None]]] | None = None,
     check_abort: Callable[[], Awaitable[bool]] | None = None,
+    niceness: int | None = None,
+    taskset: str | None = None,
 ) -> None:
     progress = FFmpegProgress()
     fflog = FFLog()
@@ -122,7 +124,15 @@ async def ffmpeg(
     # Create ffmpeg command
     #
 
-    full_cmd = BASE_FFMPEG_CMD + cmd
+    pre_cmd: list[str] = []
+
+    if niceness is not None:
+        pre_cmd.extend(["nice", f"-n{niceness}"])
+
+    if taskset is not None:
+        pre_cmd.extend(["taskset", taskset])
+
+    full_cmd = pre_cmd + BASE_FFMPEG_CMD + cmd
     logger.debug(f"{' '.join(full_cmd)}")
     process = await asyncio.create_subprocess_exec(
         *full_cmd,
