@@ -2,6 +2,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import IO, Any
 
 from nx.exceptions import BaseNXError
 from nx.logging import logger
@@ -116,6 +117,7 @@ async def ffmpeg(  # noqa: C901, PLR0913
     check_abort: Callable[[], Awaitable[bool]] | None = None,
     niceness: int | None = None,
     taskset: str | None = None,
+    stdin: int | IO[Any] | None = None,
 ) -> None:
     progress = FFmpegProgress()
     fflog = FFLog()
@@ -136,6 +138,7 @@ async def ffmpeg(  # noqa: C901, PLR0913
     logger.debug(f"{' '.join(full_cmd)}")
     process = await asyncio.create_subprocess_exec(
         *full_cmd,
+        stdin=stdin,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
