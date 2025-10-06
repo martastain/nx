@@ -1,5 +1,5 @@
 [project]
-name = "nx"
+name = "nebula-nx"
 version = "0.0.2"
 description = "Very opinionated set of tools"
 readme = "README.md"
