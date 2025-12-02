@@ -6,3 +6,12 @@ check:
 	uv run ruff format .
 	uv run ruff check . --fix
 	uv run mypy .
+
+
+build: check
+	uv build
+
+release: build
+	git tag -a v$(VERSION) -m "Release version $(VERSION)"
+	git push --tags
+	uv publish

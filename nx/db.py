@@ -1,8 +1,8 @@
 __all__ = ["db"]
 
 import asyncio
+import datetime as dt
 import sys
-import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -25,6 +25,26 @@ _current_connection: ContextVar["PoolConnectionProxy | None"] = ContextVar(  # t
 _connection_lock = asyncio.Lock()
 
 
+def timestamptz_encoder(v: Any) -> str:
+    if isinstance(v, int | float):
+        return dt.datetime.fromtimestamp(v, tz=dt.UTC).isoformat()
+    if isinstance(v, dt.datetime):
+        return v.isoformat()
+    if isinstance(v, str):
+        return dt.datetime.fromisoformat(v).isoformat()
+    raise ValueError(f"Unsupported type for timestamptz_encoder: {type(v).__name__}")
+
+
+def timestamptz_decoder(v: Any) -> dt.datetime:
+    if isinstance(v, int | float):
+        return dt.datetime.fromtimestamp(v, tz=dt.UTC)
+    if isinstance(v, dt.datetime):
+        return v
+    if isinstance(v, str):
+        return dt.datetime.fromisoformat(v)
+    raise ValueError
+
+
 class DB:
     _instance: "DB | None" = None
     _pool: asyncpg.pool.Pool | None = None  # type: ignore[type-arg]
@@ -44,14 +64,14 @@ class DB:
         )
         await conn.set_type_codec(
             "uuid",
-            encoder=str,
-            decoder=lambda x: uuid.UUID(x).hex,
+            encoder=lambda x: normalize_uuid(x, allow_nulls=True),
+            decoder=lambda x: normalize_uuid(x, allow_nulls=True),
             schema="pg_catalog",
         )
         await conn.set_type_codec(
-            "uuid",
-            encoder=lambda x: normalize_uuid(x, True),
-            decoder=lambda x: normalize_uuid(x, True),
+            "timestamptz",
+            encoder=timestamptz_encoder,
+            decoder=timestamptz_decoder,
             schema="pg_catalog",
         )
 

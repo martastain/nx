@@ -34,6 +34,12 @@ class ConfigModel(BaseModel):
     postgres_user: PostgresUser = None
     postgres_password: PostgresPassword = None
 
+    #
+    # Tools setup
+    #
+
+    tool_uuid_use_hyphens: bool = False
+
     @field_validator("log_level", mode="before")
     @classmethod
     def validate_log_level(cls, v: Any) -> LogLevel:
