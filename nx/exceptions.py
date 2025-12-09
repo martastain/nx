@@ -1,4 +1,4 @@
-class BaseNXError(Exception):
+class Error(Exception):
     """Base class for all exceptions raised by the NX library."""
 
     status = 500
@@ -9,11 +9,27 @@ class BaseNXError(Exception):
             self.detail = detail
 
 
-class NotFoundError(BaseNXError):
+class NotFoundError(Error):
     status = 404
     detail = "Not Found"
 
 
-class UnauthorizedError(BaseNXError):
+class UnauthorizedError(Error):
     status = 401
     detail = "Unauthorized"
+
+
+class BadRequestError(Error):
+    status = 400
+    detail = "Bad Request"
+
+
+class ForbiddenError(Error):
+    status = 403
+    detail = "Forbidden"
+
+
+class ConflictError(Error):
+    status = 409
+    detail = "Conflict"
+
