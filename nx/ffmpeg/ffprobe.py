@@ -2,10 +2,10 @@ import asyncio
 import json
 from typing import Any, cast
 
-from nx.exceptions import BaseNXError
+import nx.exceptions
 
 
-class FFProbeError(BaseNXError):
+class FFProbeError(nx.exceptions.Error):
     """Exception raised when metadata extraction fails."""
 
 

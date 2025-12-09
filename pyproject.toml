@@ -1,6 +1,6 @@
 [project]
 name = "nx-framework"
-version = "0.0.4"
+version = "0.0.5"
 description = "Low-level FastAPI, asyncpg and Redis framework used by Nebula Broadcast and other projects."
 authors = [
   {name = "Martin Wacker", email = "martas@imm.cz"},

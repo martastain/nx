@@ -4,19 +4,19 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import IO, Any
 
-from nx.exceptions import BaseNXError
+import nx.exceptions
 from nx.logging import logger
 
 
-class FFmpegError(BaseNXError):
+class FFmpegError(nx.exceptions.Error):
     pass
 
 
-class FFmpegAbortedError(FFmpegError):
+class FFmpegAbortedError(nx.exceptions.Error):
     pass
 
 
-class EndOfStreamError(FFmpegError):
+class EndOfStreamError(nx.exceptions.Error):
     pass
 
 

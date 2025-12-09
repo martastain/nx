@@ -32,4 +32,3 @@ class ForbiddenError(Error):
 class ConflictError(Error):
     status = 409
     detail = "Conflict"
-
