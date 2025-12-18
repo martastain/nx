@@ -9,6 +9,7 @@ check:
 
 
 build: check
+	rm dist/*.whl
 	uv build
 
 release: build
