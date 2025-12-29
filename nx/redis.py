@@ -8,6 +8,7 @@ from redis.asyncio.client import PubSub
 
 from nx.config import config
 from nx.logging import logger
+from nx.utils.json import json_dumps, json_loads
 
 T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
 
@@ -66,7 +67,7 @@ class Redis:
         if value is None:
             return None
         try:
-            return json.loads(value)
+            return json_loads(value)
         except json.decoder.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in {namespace}:{key}") from e
 
@@ -102,7 +103,7 @@ class Redis:
         if isinstance(value, BaseModel):
             payload = value.model_dump_json(exclude_unset=True, exclude_defaults=True)
         else:
-            payload = json.dumps(value)
+            payload = json_dumps(value)
         await self.set(namespace, key, payload, ttl=ttl)
 
     @ensure_connection

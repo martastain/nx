@@ -1,18 +1,11 @@
 import hashlib
-import json
 import textwrap
 import uuid
 from typing import Any
 
 from nx.config import config
 
-
-def json_dumps(data: Any, **kwargs: Any) -> str:
-    return json.dumps(data, **kwargs)
-
-
-def json_loads(data: Any, **kwargs: Any) -> Any:
-    return json.loads(data, **kwargs)
+from .json import json_dumps
 
 
 def indent(text: str, amount: int = 4) -> str:

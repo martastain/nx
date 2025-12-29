@@ -9,10 +9,9 @@ check:
 
 
 build: check
-	rm dist/*.whl
 	uv build
 
 release: build
+	uv publish
 	git tag -a v$(VERSION) -m "Release version $(VERSION)"
 	git push --tags
-	uv publish
