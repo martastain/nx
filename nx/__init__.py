@@ -4,6 +4,7 @@ __all__ = [
     "Error",
     "ForbiddenError",
     "NotFoundError",
+    "ServiceUnavailableError",
     "UnauthorizedError",
     "coalesce",
     "config",
@@ -21,6 +22,7 @@ from nx.exceptions import (
     Error,
     ForbiddenError,
     NotFoundError,
+    ServiceUnavailableError,
     UnauthorizedError,
 )
 from nx.initialize import initialize

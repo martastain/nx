@@ -1,4 +1,6 @@
 import hashlib
+import inspect
+import re
 import textwrap
 import uuid
 from typing import Any
@@ -64,3 +66,20 @@ def create_uuid(
     if use_hyphens:
         return str(uuid.uuid4())
     return uuid.uuid4().hex
+
+
+def clean_doc(doc: str | None) -> str:
+    """Clean up a docstring or error message
+
+    - remove leading and trailing whitespace.
+    - normalize indentation (remove common leading whitespace from all lines).
+    - collapse multiple blank lines into a single blank line.
+    - collapse single line break into a space, but preserve multiple line breaks.
+    """
+    if doc is None:
+        return ""
+
+    cleaned = inspect.cleandoc(doc)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)  # collapse multiple blank lines
+    cleaned = re.sub(r"(?<!\n)\n(?!\n)", " ", cleaned)  # collapse single line breaks
+    return cleaned.strip()
