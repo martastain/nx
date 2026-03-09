@@ -37,6 +37,8 @@ def _write_stderr(message: str) -> None:
     sys.stderr.write(message + "\n")
     sys.stderr.flush()
 
+_get_frame = sys._getframe  # noqa: SLF001
+
 
 def _serialize(
     logger: "Logger",
@@ -44,45 +46,62 @@ def _serialize(
     message: str,
     context: dict[str, Any],
 ) -> None:
-    _context = {**(log_context.get() or {}), **context}
 
-    frame = sys._getframe(2)  # noqa: SLF001
-    module = None
+    # Combine the context from the context variable and
+    # the inline context passed to the log method.
+    # The inline context takes precedence.
+
+    _context = log_context.get()
+    if _context is None:
+        _context = {}
+    if context:
+        _context.update(context)
+
+    # Get the caller's module name, function name, and line number
+    # and include them in the log context. This is done by inspecting the call stack.
+
+    frame = _get_frame(2)
     if frame is not None:
         caller_frame = frame.f_back
         if caller_frame is not None:
-            module = caller_frame.f_globals.get("__name__", "unknown")
-            _context["line"] = caller_frame.f_lineno
-            _context["function"] = caller_frame.f_code.co_name
+            _context["code_module"] = caller_frame.f_globals.get("__name__", "unknown")
+            _context["code_func"] = caller_frame.f_code.co_name
+            _context["code_file"] = caller_frame.f_code.co_filename
+            _context["code_line"] = caller_frame.f_lineno
+
+    # Format the log message based on the logger's log mode (text or json).
+    # In text mode, include the log level and message. If there is context,
+    # include it in a separate block. In json mode, serialize the entire
+    # payload as JSON.
 
     if logger.log_mode == "json":
         payload = {
             "timestamp": time.time(),
             "level": level.name.lower(),
             "message": message,
-            "module": module,
             **_context,
         }
         serialized = json_dumps(payload)
         _write_stderr(serialized)
+        return
 
-    else:
-        # Text mode logging
-        formatted = f"{level.name.upper():<7} {module:<26} | {message}"
-        _write_stderr(formatted)
+    # Text mode logging
 
-        if config.log_context or "traceback" in context:
-            # Put the module name and extra context info in a separate block
-            tb = _context.pop("traceback", None)
-            if tb:
-                _write_stderr("\n" + indent(tb, 8))
+    formatted = f"{level.name.upper():<7} {message}"
 
-            contextual_info = ""
-            for k, v in _context.items():
-                contextual_info += f"{k}: {v}\n"
-            if contextual_info:
-                _write_stderr(indent(contextual_info, 8))
+    if config.log_context or "traceback" in context:
+        # Put the module name and extra context info in a separate block
+        tb = _context.pop("traceback", "").strip()
+        if tb:
+            formatted += "\n\n" + indent(tb, 8)
 
+        contextual_info = "\n\n"
+        for k, v in _context.items():
+            contextual_info += f"{k}: {v}\n"
+        if contextual_info:
+            formatted += indent(contextual_info, 8)
+
+    _write_stderr(formatted)
 
 class Logger:
     user: str = "nebula"
@@ -133,13 +152,14 @@ class Logger:
     @contextlib.contextmanager
     def contextualize(self, **context: Any) -> Generator[None, None, None]:
         """Add extra context to the current log context."""
+
         current = log_context.get() or {}
         updated = {**current, **context}
-        log_context.set(updated)
+        token = log_context.set(updated)
         try:
             yield
         finally:
-            log_context.set(current)
+            log_context.reset(token)
 
 
 logger = Logger()
