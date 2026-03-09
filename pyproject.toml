@@ -13,7 +13,6 @@ dependencies = [
     "aioshutil>=1.5",
     "asyncpg>=0.30.0",
     "fastapi>=0.115.8",
-    "loguru>=0.7.3",
     "pydantic-settings>=2.7.1",
     "pydantic[email]>=2.10.6",
     "python-dotenv>=1.0.1",
