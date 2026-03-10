@@ -19,6 +19,7 @@ class ConfigModel(BaseModel):
     log_level: LogLevel = "DEBUG"
     log_mode: LogMode = "text"
     log_context: bool = True
+    log_stack: bool = True
     server_host: str = "0.0.0.0"
     server_port: ServerPort = 8765
     postgres_url: PostgresDsn = PostgresDsn("postgresql://nx:nx@postgres:5432/nx")

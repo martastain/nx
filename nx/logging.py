@@ -16,13 +16,13 @@ from nx.utils import indent, json_dumps
 class LogLevel(enum.IntEnum):
     """Log level."""
 
-    TRACE = 0
-    DEBUG = 1
-    INFO = 2
-    SUCCESS = 2
-    WARNING = 3
-    ERROR = 4
-    CRITICAL = 5
+    TRACE = 5
+    DEBUG = 10
+    INFO = 20
+    SUCCESS = 25
+    WARNING = 30
+    ERROR = 40
+    CRITICAL = 50
 
 
 class LoggerConfiguration(TypedDict):
@@ -61,14 +61,17 @@ def _serialize(
     # Get the caller's module name, function name, and line number
     # and include them in the log context. This is done by inspecting the call stack.
 
-    frame = _get_frame(2)
-    if frame is not None:
-        caller_frame = frame.f_back
-        if caller_frame is not None:
-            _context["code_module"] = caller_frame.f_globals.get("__name__", "unknown")
-            _context["code_func"] = caller_frame.f_code.co_name
-            _context["code_file"] = caller_frame.f_code.co_filename
-            _context["code_line"] = caller_frame.f_lineno
+    if config.log_stack:
+        frame = _get_frame(2)
+        if frame is not None:
+            caller_frame = frame.f_back
+            if caller_frame is not None:
+                _context["code_module"] = caller_frame.f_globals.get(
+                    "__name__", "unknown"
+                )
+                _context["code_func"] = caller_frame.f_code.co_name
+                _context["code_file"] = caller_frame.f_code.co_filename
+                _context["code_line"] = caller_frame.f_lineno
 
     # Format the log message based on the logger's log mode (text or json).
     # In text mode, include the log level and message. If there is context,
