@@ -37,7 +37,7 @@ print(result1, result2, result3)
 import asyncio
 import hashlib
 from collections.abc import Callable, Coroutine
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 
 def _hash_args(func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
@@ -53,7 +53,7 @@ def _hash_args(func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
 T = TypeVar("T")
 
 
-class Coalescer(Generic[T]):
+class Coalescer[T]:
     _instance: "Coalescer[Any] | None" = None
     lock: asyncio.Lock
     current_futures: dict[str, asyncio.Task[T]]

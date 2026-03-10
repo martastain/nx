@@ -1,6 +1,6 @@
 import json
 from collections.abc import AsyncGenerator, Callable, Coroutine
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar, cast
 
 from pydantic import BaseModel
 from redis import asyncio as aioredis
@@ -13,7 +13,7 @@ from nx.utils.json import json_dumps, json_loads
 T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
 
 
-def ensure_connection(func: T) -> T:
+def ensure_connection[T: Callable[..., Coroutine[Any, Any, Any]]](func: T) -> T:
     """Decorator to ensure the connection pool is initialized."""
 
     async def wrapper(self: "Redis", *args: Any, **kwargs: Any) -> Any:
@@ -28,11 +28,11 @@ class Redis:
     _instance: "Redis | None" = None
     _pool: aioredis.Redis | None = None
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "Redis":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         _ = args, kwargs
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast("Self", cls._instance)
 
     connected: bool = False
     channel: str = "nx"
@@ -40,7 +40,7 @@ class Redis:
     async def connect(self) -> None:
         """Create a Redis connection pool"""
         if self._pool is None:
-            self._pool = aioredis.from_url(str(config.redis_url))  # type: ignore[no-untyped-call]
+            self._pool = aioredis.from_url(str(config.redis_url))
         assert self._pool is not None, "Redis pool is not initialized"
         try:
             await self._pool.set("CONN", "alive")

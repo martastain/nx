@@ -6,7 +6,7 @@ import sys
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import asyncpg
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from asyncpg.pool import PoolConnectionProxy
     from asyncpg.prepared_stmt import PreparedStatement
 
-_current_connection: ContextVar["PoolConnectionProxy | None"] = ContextVar(  # type: ignore[type-arg]
+_current_connection: ContextVar["PoolConnectionProxy | None"] = ContextVar(
     "_current_connection", default=None
 )
 
@@ -47,13 +47,13 @@ def timestamptz_decoder(v: Any) -> dt.datetime:
 
 class DB:
     _instance: "DB | None" = None
-    _pool: asyncpg.pool.Pool | None = None  # type: ignore[type-arg]
+    _pool: asyncpg.pool.Pool | None = None
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "DB":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         _ = args, kwargs
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast("Self", cls._instance)
 
     async def _init_connection(self, conn) -> None:  # type: ignore[no-untyped-def]
         await conn.set_type_codec(
@@ -100,7 +100,7 @@ class DB:
         *,
         timeout: int | None = None,  # noqa: ASYNC109
         force_new: bool = False,
-    ) -> AsyncIterator["PoolConnectionProxy"]:  # type: ignore[type-arg]
+    ) -> AsyncIterator["PoolConnectionProxy"]:
         """Resolve the current connection from the contextvar or acquire a new one.
         If the connection is not available, create a new one.
         """
@@ -131,7 +131,7 @@ class DB:
         self,
         timeout: int | None = None,  # noqa: ASYNC109
         force_new: bool = False,
-    ) -> AsyncIterator["PoolConnectionProxy"]:  # type: ignore[type-arg]
+    ) -> AsyncIterator["PoolConnectionProxy"]:
         """Acquire a connection from the pool and manage transaction state."""
         async with self.acquire(timeout=timeout, force_new=force_new) as connection:
             if connection.is_in_transaction():
@@ -158,7 +158,7 @@ class DB:
         async with self.acquire() as conn:
             await conn.executemany(query, *args)
 
-    async def prepare(self, query: str, *args: Any) -> "PreparedStatement":  # type: ignore[type-arg]
+    async def prepare(self, query: str, *args: Any) -> "PreparedStatement":
         """Fetch a query and return the result."""
         async with self.acquire() as conn:
             if not conn.is_in_transaction():

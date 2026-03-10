@@ -37,6 +37,7 @@ def _write_stderr(message: str) -> None:
     sys.stderr.write(message + "\n")
     sys.stderr.flush()
 
+
 _get_frame = sys._getframe  # noqa: SLF001
 
 
@@ -103,6 +104,7 @@ def _serialize(
 
     _write_stderr(formatted)
 
+
 class Logger:
     user: str = "nebula"
     level = LogLevel.DEBUG
@@ -134,19 +136,19 @@ class Logger:
     def warn(self, *args: Any, **context: Any) -> None:
         self(LogLevel.WARNING, *args, **context)
 
-    def warning(self, *args: Any, **context) -> None:
+    def warning(self, *args: Any, **context: Any) -> None:
         self(LogLevel.WARNING, *args, **context)
 
-    def error(self, *args: Any, **context) -> None:
+    def error(self, *args: Any, **context: Any) -> None:
         self(LogLevel.ERROR, *args, **context)
 
-    def traceback(self, *args: Any, **context) -> str:
+    def traceback(self, *args: Any, **context: Any) -> str:
         msg = " ".join([str(arg) for arg in args])
         tb = traceback.format_exc()
         self(LogLevel.ERROR, *args, traceback=tb, **context)
         return msg
 
-    def critical(self, *args: Any, **context) -> None:
+    def critical(self, *args: Any, **context: Any) -> None:
         self(LogLevel.CRITICAL, *args, **context)
 
     @contextlib.contextmanager

@@ -7,7 +7,7 @@ def initialize(
 ) -> None:
     """Initialize the configuration for the package."""
     if standalone:
-        from nx.config import ConfigModel, ConfigProxy
+        from nx.config import ConfigModel, ConfigProxy  # noqa: PLC0415
 
         _config_proxy = ConfigProxy[ConfigModel]()
         _config_proxy.initialize(ConfigModel, "NX")
