@@ -52,12 +52,9 @@ def _serialize(
     # the inline context passed to the log method.
     # The inline context takes precedence.
 
-    _context = log_context.get()
-    if _context is None:
-        _context = {}
+    _context = dict(log_context.get() or {})
     if context:
         _context.update(context)
-
     # Get the caller's module name, function name, and line number
     # and include them in the log context. This is done by inspecting the call stack.
 
