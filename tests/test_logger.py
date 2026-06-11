@@ -15,7 +15,7 @@ def test_logger() -> None:
     nx.config.log_stack = True
 
     try:
-        raise ValueError("This is a test error.")
+        raise ValueError("This is a test error.")  # noqa: TRY301
     except ValueError:
         nx.log.traceback("An error occurred.")
 
