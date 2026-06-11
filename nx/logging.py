@@ -96,11 +96,11 @@ def _serialize(
         if tb:
             formatted += "\n\n" + indent(tb, 8)
 
-        contextual_info = "\n\n"
+        contextual_info = ""
         for k, v in _context.items():
             contextual_info += f"{k}: {v}\n"
         if contextual_info:
-            formatted += indent(contextual_info, 8)
+            formatted += indent("\n\n" + contextual_info, 8)
 
     _write_stderr(formatted)
 
