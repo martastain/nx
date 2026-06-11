@@ -61,7 +61,7 @@ def _serialize(
     # Get the caller's module name, function name, and line number
     # and include them in the log context. This is done by inspecting the call stack.
 
-    if config.log_stack:
+    if config.log_stack or "traceback" in context:
         frame = _get_frame(2)
         if frame is not None:
             caller_frame = frame.f_back
