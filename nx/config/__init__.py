@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 import os
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ from .config_model import ConfigModel
 T = TypeVar("T", bound=BaseModel)
 
 
-class ConfigProxy(Generic[T]):
+class ConfigProxy[T: BaseModel]:
     _instance: "ConfigProxy[T] | None" = None
     _config_model: type[T]
     _fields: set[str]
