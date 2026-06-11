@@ -1,6 +1,6 @@
 import json
 from collections.abc import AsyncGenerator, Callable, Coroutine
-from typing import Any, Self, TypeVar, cast
+from typing import Any, Self, cast
 
 from pydantic import BaseModel
 from redis import asyncio as aioredis
@@ -9,8 +9,6 @@ from redis.asyncio.client import PubSub
 from nx.config import config
 from nx.logging import logger
 from nx.utils.json import json_dumps, json_loads
-
-T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
 
 
 def ensure_connection[T: Callable[..., Coroutine[Any, Any, Any]]](func: T) -> T:
