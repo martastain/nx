@@ -60,7 +60,7 @@ def _make_cache_key(
         relevant_args = args[1:] if skip_first else args
         arg_str = "_".join(str(a) for a in relevant_args)
 
-        kwarg_str = "_".join(f"{k}_{v}" for k, v in kwargs.items())
+        kwarg_str = "_".join(f"{k}_{v}" for k, v in sorted(kwargs.items()))
         key = f"{func.__name__}_{arg_str}_{kwarg_str}"
 
     return f"{ns}:{key}"
