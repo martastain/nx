@@ -236,7 +236,10 @@ class Redis:
     ) -> Callable[[T], T]:
         """
         Decorator to cache the result of an async function in Redis.
-        The function must return a JSON-serializable object.
+
+        By default the return value is stored as JSON. If `model` is a Pydantic model
+        class, cached JSON will be deserialized into that model on reads. If `model`
+        is "bytes", raw bytes are stored and returned.
         """
 
         def decorator(func: T) -> T:
