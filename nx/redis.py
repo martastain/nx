@@ -48,14 +48,12 @@ def _make_cache_key(
         sig = inspect.signature(func)
         params = list(sig.parameters.values())
 
-        skip_first = False
-        if args and params:
-            first_param = params[0]
-            if (
-                first_param is not None
-                and first_param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-            ):
-                skip_first = True
+        skip_first = bool(
+            args
+            and params
+            and params[0].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and params[0].name in {"self", "cls"}
+        )
 
         relevant_args = args[1:] if skip_first else args
         arg_str = "_".join(str(a) for a in relevant_args)
