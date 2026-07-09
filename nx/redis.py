@@ -33,8 +33,8 @@ def _make_cache_key(
 
         format_args = {
             k: v
-            for i, (k, v) in enumerate(bound_args.arguments.items())
-            if i > 0 or k != "self"  # Exclude the 'self' argument from key generation
+            for k, v in bound_args.arguments.items()
+            if k not in {"self", "cls"}  # Exclude instance/class arg from key generation
         }
 
         key = key_template.format(**format_args)
