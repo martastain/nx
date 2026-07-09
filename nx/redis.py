@@ -290,7 +290,7 @@ class Redis:
                             result,
                             ttl=ttl,
                         )
-                except (TypeError, json.JSONDecodeError, ConnectionError) as e:
+                except (TypeError, ValueError, ConnectionError) as e:
                     logger.warning(f"Failed to set cache for {full_key}: {e}")
 
                 return result
