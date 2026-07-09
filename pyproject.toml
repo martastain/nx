@@ -29,9 +29,11 @@ postgres = ["asyncpg>=0.30.0"]
 dev = [
     "asyncpg-stubs>=0.30.0",
     "mypy>=1.14.1",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
     "ruff>=0.9.4",
     "types-aiofiles>=24.1.0.20241221",
-    "nx-framework[fastapi]",
+    "nx-framework[fastapi,postgres,redis]",
 ]
 
 [tool.ruff]
@@ -83,3 +85,10 @@ strict = true
 strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+  "integration: tests that require Docker-backed Postgres and Redis services",
+]
+testpaths = ["tests"]

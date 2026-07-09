@@ -1,6 +1,8 @@
+import inspect
 import json
 from collections.abc import AsyncGenerator, Callable, Coroutine
-from typing import Any, Self, cast
+from functools import wraps
+from typing import Any, Literal, Self, TypeVar, cast
 
 from pydantic import BaseModel
 from redis import asyncio as aioredis
@@ -9,6 +11,58 @@ from redis.asyncio.client import PubSub
 from nx.config import config
 from nx.logging import logger
 from nx.utils.json import json_dumps, json_loads
+
+T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
+
+
+def _make_cache_key(
+    func: Callable[..., Any],
+    ns: str,
+    key_template: str,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    """
+    Generates the full Redis key from the namespace, key template,
+    and function arguments.
+    """
+    try:
+        sig = inspect.signature(func)
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+
+        format_args = {
+            k: v
+            for k, v in bound_args.arguments.items()
+            if k
+            not in {"self", "cls"}  # Exclude instance/class arg from key generation
+        }
+
+        key = key_template.format(**format_args)
+
+    except Exception as e:
+        logger.warning(
+            f"Could not format cache key for {func.__name__}. "
+            f"Falling back to default key generation. Error: {e}"
+        )
+
+        sig = inspect.signature(func)
+        params = list(sig.parameters.values())
+
+        skip_first = bool(
+            args
+            and params
+            and params[0].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            and params[0].name in {"self", "cls"}
+        )
+
+        relevant_args = args[1:] if skip_first else args
+        arg_str = "_".join(str(a) for a in relevant_args)
+
+        kwarg_str = "_".join(f"{k}_{v}" for k, v in sorted(kwargs.items()))
+        key = f"{func.__name__}_{arg_str}_{kwarg_str}"
+
+    return f"{ns}:{key}"
 
 
 def ensure_connection[T: Callable[..., Coroutine[Any, Any, Any]]](func: T) -> T:
@@ -172,6 +226,79 @@ class Redis:
                 logger.warning(f"Redis {namespace}:{key} has no value (JSON expected)")
                 continue
             yield key, json.loads(payload)
+
+    def cached(  # noqa: C901
+        self,
+        ns: str,
+        key: str,
+        ttl: int = 60 * 5,
+        model: type[BaseModel] | Literal["bytes"] | None = None,
+        auto_extend: bool = False,
+    ) -> Callable[[T], T]:
+        """
+        Decorator to cache the result of an async function in Redis.
+
+        By default the return value is stored as JSON. If `model` is a Pydantic model
+        class, cached JSON will be deserialized into that model on reads. If `model`
+        is "bytes", raw bytes are stored and returned.
+        """
+
+        def decorator(func: T) -> T:
+            @wraps(func)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                full_key = _make_cache_key(func, ns, key, *args, **kwargs)
+
+                result: Any
+
+                raw_cached_result = await self.get(
+                    namespace=ns,
+                    key=full_key.removeprefix(f"{ns}:"),
+                )
+
+                if raw_cached_result is not None:
+                    try:
+                        if model == "bytes":
+                            result = raw_cached_result
+                        elif model:
+                            cached_result = json_loads(raw_cached_result)
+                            result = model(**cached_result)
+                        else:
+                            result = json_loads(raw_cached_result)
+                    except (TypeError, json.JSONDecodeError) as e:
+                        logger.error(
+                            f"Failed to parse cached result for {full_key}: {e}"
+                        )
+                    else:
+                        if auto_extend:
+                            await self.expire(ns, full_key.removeprefix(f"{ns}:"), ttl)
+                        return result
+
+                logger.trace(f"Cache miss for key: {full_key}")
+                result = await func(*args, **kwargs)
+
+                try:
+                    if model == "bytes":
+                        await self.set(
+                            namespace=ns,
+                            key=full_key.removeprefix(f"{ns}:"),
+                            value=cast("bytes", result),
+                            ttl=ttl,
+                        )
+                    else:
+                        await self.set_json(
+                            ns,
+                            full_key.removeprefix(f"{ns}:"),
+                            result,
+                            ttl=ttl,
+                        )
+                except (TypeError, ValueError, ConnectionError) as e:
+                    logger.warning(f"Failed to set cache for {full_key}: {e}")
+
+                return result
+
+            return wrapper  # type: ignore[return-value]
+
+        return decorator
 
 
 redis = Redis()
