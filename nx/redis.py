@@ -226,7 +226,7 @@ class Redis:
                 continue
             yield key, json.loads(payload)
 
-    def cached(
+    def cached(  # noqa: C901
         self,
         ns: str,
         key: str,
@@ -254,23 +254,23 @@ class Redis:
                     key=full_key.removeprefix(f"{ns}:"),
                 )
 
-                if raw_cached_result:
-                    if model == "bytes":
-                        result = raw_cached_result
-                    elif model:
-                        cached_result = json_loads(raw_cached_result)
-                        try:
+                if raw_cached_result is not None:
+                    try:
+                        if model == "bytes":
+                            result = raw_cached_result
+                        elif model:
+                            cached_result = json_loads(raw_cached_result)
                             result = cast("T", model(**cached_result))
-                        except (TypeError, json.JSONDecodeError) as e:
-                            logger.error(
-                                f"Failed to parse cached result for {full_key}: {e}"
-                            )
+                        else:
+                            result = json_loads(raw_cached_result)
+                    except (TypeError, json.JSONDecodeError) as e:
+                        logger.error(
+                            f"Failed to parse cached result for {full_key}: {e}"
+                        )
                     else:
-                        result = json_loads(raw_cached_result)
-
-                    if auto_extend:
-                        await self.expire(ns, full_key.removeprefix(f"{ns}:"), ttl)
-                    return result
+                        if auto_extend:
+                            await self.expire(ns, full_key.removeprefix(f"{ns}:"), ttl)
+                        return result
 
                 logger.trace(f"Cache miss for key: {full_key}")
                 result = await func(*args, **kwargs)
