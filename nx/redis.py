@@ -247,7 +247,7 @@ class Redis:
             async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 full_key = _make_cache_key(func, ns, key, *args, **kwargs)
 
-                result: T
+                result: Any
 
                 raw_cached_result = await self.get(
                     namespace=ns,
@@ -260,7 +260,7 @@ class Redis:
                             result = raw_cached_result
                         elif model:
                             cached_result = json_loads(raw_cached_result)
-                            result = cast("T", model(**cached_result))
+                            result = model(**cached_result)
                         else:
                             result = json_loads(raw_cached_result)
                     except (TypeError, json.JSONDecodeError) as e:
