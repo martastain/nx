@@ -40,9 +40,23 @@ from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
 
+def _func_identity(func: Callable[..., Any]) -> str:
+    """Identify a callable stably across repeated lookups.
+
+    Bound methods are rebuilt on every attribute access, so `id(obj.method)`
+    differs each time and identical calls would never coalesce. Key those on
+    the underlying function plus the instance instead. Plain functions keep
+    using id(), which distinguishes closures that share a qualname.
+    """
+    target = getattr(func, "__self__", None)
+    if target is None:
+        return str(id(func))
+    return f"{id(target)}:{id(func.__func__)}"  # type: ignore[attr-defined]
+
+
 def _hash_args(func: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
     """Generates a hash from the function arguments and keyword arguments."""
-    func_id = str(id(func))
+    func_id = _func_identity(func)
     arg_str = str(args)
     kw = [(k, v) for k, v in sorted(kwargs.items()) if not k.startswith("_")]
     kwarg_str = str(kw)

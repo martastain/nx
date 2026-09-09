@@ -2,67 +2,195 @@ import inspect
 import json
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from functools import wraps
-from typing import Any, Literal, Self, TypeVar, cast
+from string import Formatter
+from types import UnionType
+from typing import (
+    Any,
+    Literal,
+    Self,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from pydantic import BaseModel
 from redis import asyncio as aioredis
 from redis.asyncio.client import PubSub
+from redis.exceptions import RedisError
 
 from nx.config import config
 from nx.logging import logger
 from nx.utils.json import json_dumps, json_loads
 
-T = TypeVar("T", bound=Callable[..., Coroutine[Any, Any, Any]])
+type CacheModel = type[BaseModel] | Literal["bytes"] | None
+type KeyBuilder = Callable[[tuple[Any, ...], dict[str, Any]], str]
+
+_CACHE_IO_ERRORS = (RedisError, OSError)
+_CACHE_DECODE_ERRORS = (ValueError, TypeError)
 
 
-def _make_cache_key(
-    func: Callable[..., Any],
-    ns: str,
-    key_template: str,
-    *args: Any,
-    **kwargs: Any,
-) -> str:
+def _template_field_names(key_template: str) -> set[str]:
+    """Return the argument names referenced by a cache key template."""
+    names: set[str] = set()
+    for _, field_name, _, _ in Formatter().parse(key_template):
+        if field_name is None:
+            continue
+        root = field_name.partition(".")[0].partition("[")[0]
+        if not root or root.isdigit():
+            raise ValueError(
+                f"Cache key template {key_template!r} uses the positional field "
+                f"'{{{field_name}}}'. Use named fields such as '{{item_id}}' so "
+                f"keys stay stable regardless of how the function is called."
+            )
+        names.add(root)
+    return names
+
+
+def _has_unstable_repr(value: Any) -> bool:
+    """True if formatting `value` embeds its memory address in the key.
+
+    Objects that inherit all of object's formatting hooks render as
+    `<Thing object at 0x...>`, which differs on every instance: the cache would
+    never hit and the keyspace would grow without bound.
     """
-    Generates the full Redis key from the namespace, key template,
-    and function arguments.
+    hooks = ("__format__", "__repr__", "__str__")
+    # object itself is dropped from the MRO: it is the source of the defaults.
+    return not any(
+        hook in vars(klass) for klass in type(value).__mro__[:-1] for hook in hooks
+    )
+
+
+def _make_key_builder(func: Callable[..., Any], key_template: str) -> KeyBuilder:
+    """Validate a key template against `func` and return a key builder for it.
+
+    The template is checked at decoration time so a typo surfaces on import
+    rather than silently sending every call to a different key.
+    """
+    sig = inspect.signature(func)
+    params = set(sig.parameters) - {"self", "cls"}
+    accepts_kwargs = any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
+
+    fields = _template_field_names(key_template)
+    if not accepts_kwargs and (unknown := sorted(fields - params)):
+        raise ValueError(
+            f"Cache key template {key_template!r} for {func.__qualname__}() "
+            f"references unknown argument(s): {', '.join(unknown)}. "
+            f"Available: {', '.join(sorted(params)) or 'none'}."
+        )
+
+    warned: set[str] = set()
+
+    def build(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+        bound = sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        format_args: dict[str, Any] = {}
+        for name, value in bound.arguments.items():
+            # Instance/class args are excluded: the template addresses the call
+            # by its arguments, not by which object it was invoked on.
+            if name in {"self", "cls"}:
+                continue
+            # **kwargs arrive nested under the parameter name; flatten them so
+            # a template can reference the keywords it actually received.
+            if sig.parameters[name].kind is inspect.Parameter.VAR_KEYWORD:
+                format_args.update(value)
+            else:
+                format_args[name] = value
+
+        for name in fields - warned:
+            if _has_unstable_repr(format_args.get(name)):
+                warned.add(name)
+                logger.warning(
+                    f"Cache key for {func.__qualname__}() formats argument "
+                    f"'{name}' of type {type(format_args[name]).__name__}, which "
+                    f"has no __str__/__repr__. The key will differ on every call. "
+                    f"Format a stable attribute such as '{{{name}.id}}' instead."
+                )
+
+        return key_template.format(**format_args)
+
+    return build
+
+
+def _infer_model(func: Callable[..., Any]) -> type[BaseModel] | None:
+    """Derive the cache model from the return annotation, if it is unambiguous.
+
+    Without a model, JSON round-trips lose types: a BaseModel comes back as a
+    dict and a datetime as a string. Picking the annotation up automatically
+    means the common case stays symmetric between a cache hit and a miss.
     """
     try:
-        sig = inspect.signature(func)
-        bound_args = sig.bind(*args, **kwargs)
-        bound_args.apply_defaults()
+        annotation = get_type_hints(func).get("return")
+    except Exception as e:  # unresolvable forward refs, exotic annotations, ...
+        logger.trace(f"Cannot resolve return type of {func.__qualname__}(): {e}")
+        return None
 
-        format_args = {
-            k: v
-            for k, v in bound_args.arguments.items()
-            if k
-            not in {"self", "cls"}  # Exclude instance/class arg from key generation
-        }
+    if get_origin(annotation) in {Union, UnionType}:
+        candidates = [a for a in get_args(annotation) if a is not type(None)]
+    else:
+        candidates = [annotation]
 
-        key = key_template.format(**format_args)
+    if len(candidates) == 1 and isinstance(candidates[0], type):
+        model = candidates[0]
+        if issubclass(model, BaseModel):
+            return model
+    return None
 
-    except Exception as e:
+
+def _make_lossy_warner(
+    func: Callable[..., Any],
+    model: CacheModel,
+) -> Callable[[Any], None]:
+    """Return a guard that warns once if results cannot round-trip faithfully.
+
+    Caching a BaseModel with no model configured stores it fine but hands back
+    a plain dict on every hit, so behaviour changes the moment the cache warms
+    up. That is worth saying out loud exactly once per decorated function.
+    """
+    warned = False
+
+    def check(value: Any) -> None:
+        nonlocal warned
+        if warned or model is not None or not isinstance(value, BaseModel):
+            return
+        warned = True
         logger.warning(
-            f"Could not format cache key for {func.__name__}. "
-            f"Falling back to default key generation. Error: {e}"
+            f"{func.__qualname__}() caches {type(value).__name__} without a "
+            f"model, so cache hits will return plain dicts instead. Annotate "
+            f"the return type or pass model= to cached()."
         )
 
-        sig = inspect.signature(func)
-        params = list(sig.parameters.values())
+    return check
 
-        skip_first = bool(
-            args
-            and params
-            and params[0].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-            and params[0].name in {"self", "cls"}
-        )
 
-        relevant_args = args[1:] if skip_first else args
-        arg_str = "_".join(str(a) for a in relevant_args)
+def _serialize(value: Any, model: CacheModel) -> str | bytes:
+    """Encode a return value for storage."""
+    if model == "bytes":
+        if not isinstance(value, bytes | bytearray | memoryview):
+            raise TypeError(
+                f"model='bytes' expects a bytes-like result, got {type(value).__name__}"
+            )
+        return bytes(value)
+    if isinstance(value, BaseModel):
+        # A full dump, unlike set_json(): exclude_unset/exclude_defaults would
+        # let a later change of a field default silently rewrite cached values.
+        return value.model_dump_json()
+    return json_dumps(value)
 
-        kwarg_str = "_".join(f"{k}_{v}" for k, v in sorted(kwargs.items()))
-        key = f"{func.__name__}_{arg_str}_{kwarg_str}"
 
-    return f"{ns}:{key}"
+def _deserialize(raw: bytes, model: CacheModel) -> Any:
+    """Decode a stored payload back into a return value."""
+    if model == "bytes":
+        return raw
+    if model is None:
+        return json_loads(raw)
+    if raw.strip() == b"null":
+        return None
+    return model.model_validate_json(raw)
 
 
 def ensure_connection[T: Callable[..., Coroutine[Any, Any, Any]]](func: T) -> T:
@@ -227,76 +355,130 @@ class Redis:
                 continue
             yield key, json.loads(payload)
 
-    def cached(  # noqa: C901
+    async def _cache_read(
+        self,
+        ns: str,
+        subkey: str,
+        model: CacheModel,
+    ) -> tuple[bool, Any]:
+        """Read one cache entry, returning (hit, value).
+
+        Anything that goes wrong - Redis down, a payload that no longer parses
+        into `model` - is reported as a miss so the caller recomputes.
+        """
+        try:
+            raw = await self.get(ns, subkey)
+        except _CACHE_IO_ERRORS as e:
+            logger.warning(f"Cache read failed for {ns}:{subkey}: {e}")
+            return False, None
+
+        if raw is None:
+            return False, None
+
+        try:
+            return True, _deserialize(raw, model)
+        except _CACHE_DECODE_ERRORS as e:
+            logger.warning(f"Discarding unreadable cache entry {ns}:{subkey}: {e}")
+            return False, None
+
+    async def _cache_write(
+        self,
+        ns: str,
+        subkey: str,
+        value: Any,
+        model: CacheModel,
+        ttl: int,
+    ) -> None:
+        """Store one cache entry. Failing to cache is never fatal."""
+        try:
+            await self.set(ns, subkey, _serialize(value, model), ttl=ttl)
+        except (*_CACHE_IO_ERRORS, *_CACHE_DECODE_ERRORS) as e:
+            logger.warning(f"Cache write failed for {ns}:{subkey}: {e}")
+
+    async def _cache_extend(self, ns: str, subkey: str, ttl: int) -> None:
+        """Refresh the TTL of a cache entry that was just read."""
+        try:
+            await self.expire(ns, subkey, ttl)
+        except _CACHE_IO_ERRORS as e:
+            logger.warning(f"Could not extend TTL of {ns}:{subkey}: {e}")
+
+    async def _cache_drop(self, ns: str, subkey: str) -> None:
+        """Remove one cache entry."""
+        try:
+            await self.delete(ns, subkey)
+        except _CACHE_IO_ERRORS as e:
+            logger.warning(f"Cache invalidation failed for {ns}:{subkey}: {e}")
+
+    def cached[F: Callable[..., Coroutine[Any, Any, Any]]](
         self,
         ns: str,
         key: str,
+        *,
         ttl: int = 60 * 5,
-        model: type[BaseModel] | Literal["bytes"] | None = None,
+        model: CacheModel = None,
         auto_extend: bool = False,
-    ) -> Callable[[T], T]:
-        """
-        Decorator to cache the result of an async function in Redis.
+    ) -> Callable[[F], F]:
+        """Cache the result of an async function in Redis.
 
-        By default the return value is stored as JSON. If `model` is a Pydantic model
-        class, cached JSON will be deserialized into that model on reads. If `model`
-        is "bytes", raw bytes are stored and returned.
+        `key` is a format template resolved against the decorated function's
+        arguments, e.g. "user:{user_id}". It is validated at decoration time,
+        so a name that does not match a parameter raises immediately.
+
+        Values are stored as JSON. Pass `model` to get them back as the same
+        type they were computed as:
+
+        - a BaseModel subclass: payloads are validated into that model on read.
+          Inferred from the return annotation when it is a single model type,
+          so `async def f(...) -> User` needs no `model` argument.
+        - "bytes": the result is stored and returned verbatim.
+        - None (and no usable annotation): plain JSON, meaning a cache hit
+          yields dicts and ISO strings where a miss yielded models and
+          datetimes. Prefer annotating the function or passing `model`.
+
+        Redis being unreachable degrades to a cache miss rather than raising,
+        as does a payload that no longer matches `model` (after a deploy that
+        changed its shape, say) - it is discarded and recomputed.
+
+        The decorated function gains two helpers, both taking the same
+        arguments as the function itself (including `self` for methods, even
+        though it never contributes to the key):
+
+        - `await f.invalidate(*args, **kwargs)` drops the entry for one call.
+        - `f.cache_key(*args, **kwargs)` returns the full key it would use.
         """
 
-        def decorator(func: T) -> T:
+        def decorator(func: F) -> F:
+            build_key = _make_key_builder(func, key)
+            resolved_model = model if model is not None else _infer_model(func)
+            warn_lossy = _make_lossy_warner(func, resolved_model)
+
             @wraps(func)
             async def wrapper(*args: Any, **kwargs: Any) -> Any:
-                full_key = _make_cache_key(func, ns, key, *args, **kwargs)
+                subkey = build_key(args, kwargs)
 
-                result: Any
+                hit, value = await self._cache_read(ns, subkey, resolved_model)
+                if hit:
+                    if auto_extend:
+                        await self._cache_extend(ns, subkey, ttl)
+                    return value
 
-                raw_cached_result = await self.get(
-                    namespace=ns,
-                    key=full_key.removeprefix(f"{ns}:"),
-                )
-
-                if raw_cached_result is not None:
-                    try:
-                        if model == "bytes":
-                            result = raw_cached_result
-                        elif model:
-                            cached_result = json_loads(raw_cached_result)
-                            result = model(**cached_result)
-                        else:
-                            result = json_loads(raw_cached_result)
-                    except (TypeError, json.JSONDecodeError) as e:
-                        logger.error(
-                            f"Failed to parse cached result for {full_key}: {e}"
-                        )
-                    else:
-                        if auto_extend:
-                            await self.expire(ns, full_key.removeprefix(f"{ns}:"), ttl)
-                        return result
-
-                logger.trace(f"Cache miss for key: {full_key}")
+                logger.trace(f"Cache miss for key: {ns}:{subkey}")
                 result = await func(*args, **kwargs)
-
-                try:
-                    if model == "bytes":
-                        await self.set(
-                            namespace=ns,
-                            key=full_key.removeprefix(f"{ns}:"),
-                            value=cast("bytes", result),
-                            ttl=ttl,
-                        )
-                    else:
-                        await self.set_json(
-                            ns,
-                            full_key.removeprefix(f"{ns}:"),
-                            result,
-                            ttl=ttl,
-                        )
-                except (TypeError, ValueError, ConnectionError) as e:
-                    logger.warning(f"Failed to set cache for {full_key}: {e}")
-
+                warn_lossy(result)
+                await self._cache_write(ns, subkey, result, resolved_model, ttl)
                 return result
 
-            return wrapper  # type: ignore[return-value]
+            async def invalidate(*args: Any, **kwargs: Any) -> None:
+                """Drop the cache entry for one specific call."""
+                await self._cache_drop(ns, build_key(args, kwargs))
+
+            def cache_key(*args: Any, **kwargs: Any) -> str:
+                """Return the full Redis key used for one specific call."""
+                return f"{ns}:{build_key(args, kwargs)}"
+
+            wrapper.invalidate = invalidate  # type: ignore[attr-defined]
+            wrapper.cache_key = cache_key  # type: ignore[attr-defined]
+            return cast("F", wrapper)
 
         return decorator
 

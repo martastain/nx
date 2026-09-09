@@ -3,7 +3,7 @@ import json
 from typing import Any
 
 
-def json_loads(s: str) -> Any:
+def json_loads(s: str | bytes | bytearray) -> Any:
     """Load a JSON string into a Python object"""
     return json.loads(s)
 
