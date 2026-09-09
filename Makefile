@@ -20,6 +20,15 @@ build: check
 	uv build
 
 release: build
-	uv publish
+	# ensure we're on develop branch and up to date
+	git checkout develop
+	git pull origin develop
+
+	git checkout main
+	git merge develop
 	git tag -a v$(VERSION) -m "Release version $(VERSION)"
 	git push --tags
+	gh release create v$(VERSION) --title "Release version $(VERSION)" --notes "Release version $(VERSION)"
+	git checkout develop
+
+	uv publish
