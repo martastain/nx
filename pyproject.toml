@@ -69,6 +69,11 @@ ignore = [
   "ERA",     # Commented out code
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# OK: test stubs exist for their signature (cache keys are built from it) or to
+# absorb a monkeypatched call, so their arguments are deliberately unused.
+"tests/**" = ["ARG001"]
+
 [tool.mypy]
 plugins = [
   "pydantic.mypy"
