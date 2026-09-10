@@ -2,6 +2,7 @@ from nx.logging import LoggerConfiguration, init_logger
 
 
 def initialize(
+    *,
     logger_configuration: LoggerConfiguration | None = None,
     standalone: bool = False,
 ) -> None:

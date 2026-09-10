@@ -256,7 +256,7 @@ class Redis:
         self,
         namespace: str,
         key: str,
-        value: str | bytes | float | bool | None,
+        value: str | bytes | float | bool | None,  # noqa: FBT001
         *,
         ttl: int = 0,
     ) -> None:

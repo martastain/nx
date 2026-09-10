@@ -129,6 +129,7 @@ class DB:
     @asynccontextmanager
     async def transaction(
         self,
+        *,
         timeout: int | None = None,  # noqa: ASYNC109
         force_new: bool = False,
     ) -> AsyncIterator["PoolConnectionProxy"]:

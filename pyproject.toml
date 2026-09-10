@@ -52,7 +52,6 @@ ignore = [
   "COM812",  # OK: messes with formatter
   "D",       # FIXME: docstrings. Naaah.
   "EM",      # OK: String literals in exception messages (why not?)
-  "FBT",     # Boolean positional argument (WTF?)
   "FIX002",  # FIXME: TODOs
   "ISC001",  # OK: Incompatible with formatting
   "PLR2004", # OK: Magic numbers (just a few)

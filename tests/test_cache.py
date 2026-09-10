@@ -49,7 +49,7 @@ def test_template_error_lists_available_arguments() -> None:
     with pytest.raises(ValueError, match="Available: user_id, verbose"):
 
         @redis.cached(ns="t", key="user:{nope}")
-        async def load(user_id: int, verbose: bool = False) -> dict[str, Any]:
+        async def load(user_id: int, *, verbose: bool = False) -> dict[str, Any]:
             return {"id": user_id}
 
 
@@ -379,7 +379,7 @@ async def test_caching_a_model_without_one_warns_once(
     assert capsys.readouterr().err.count("will return plain dicts") == 1
 
 
-async def _sample(user_id: int, verbose: bool = False) -> dict[str, Any]:
+async def _sample(user_id: int, *, verbose: bool = False) -> dict[str, Any]:
     return {"id": user_id, "verbose": verbose}
 
 
