@@ -1,3 +1,9 @@
+import os
+import sys
+
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import nx
 from nx.initialize import initialize
 
@@ -22,3 +28,8 @@ def test_logger() -> None:
     nx.log.log_mode = "json"
 
     nx.log.info("This is a JSON log message.", extra="extra_value")
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    test_logger()

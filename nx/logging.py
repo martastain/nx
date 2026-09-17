@@ -94,13 +94,13 @@ def _serialize(
         # Put the module name and extra context info in a separate block
         tb = _context.pop("traceback", "").strip()
         if tb:
-            formatted += "\n\n" + indent(tb, 8)
+            formatted += "\n\n" + indent(tb, 8) + "\n"
 
         contextual_info = ""
         for k, v in _context.items():
             contextual_info += f"{k}: {v}\n"
         if contextual_info:
-            formatted += indent("\n\n" + contextual_info, 8)
+            formatted += indent("\n" + contextual_info, 8)
 
     _write_stderr(formatted)
 
