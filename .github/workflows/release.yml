@@ -95,3 +95,37 @@ jobs:
           draft: false
           prerelease: false
           generateReleaseNotes: true
+
+  bump:
+    # develop moves on to the next patch version, so the next release
+    # doesn't need a manual bump (bump minor or major by hand when needed)
+    needs: [ merge, release ]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Bump the patch version on develop
+        env:
+          RELEASED_SHA: ${{ needs.merge.outputs.sha || github.sha }}
+        run: |
+          released=$(git show "$RELEASED_SHA:pyproject.toml" | sed -n 's/^version = "\(.*\)"$/\1/p')
+          current=$(uv version --short)
+          # Also makes a rerun, and a push to main of an older version, do nothing
+          if [ "$current" != "$released" ]; then
+            echo "develop is at $current, released $released: nothing to bump"
+            exit 0
+          fi
+          new=$(uv version --bump patch --short --no-sync)
+          sed -i "s/^__version__ = \".*\"$/__version__ = \"$new\"/" nx/version.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: version bump to $new"
+          git push origin develop
