@@ -1,0 +1,82 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [ "develop" ]
+  # Run by the release workflow before it publishes
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag or commit to check
+        type: string
+        required: false
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+      - name: Version in pyproject.toml matches nx/version.py
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' nx/version.py)
+          if [ "$(uv version --short)" != "$version" ]; then
+            echo "::error::pyproject.toml has $(uv version --short), nx/version.py has $version: run 'make check'"
+            exit 1
+          fi
+      - run: uv run ruff format --check .
+      - run: uv run ruff check --no-fix .
+      - run: uv run mypy .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.12", "3.13", "3.14" ]
+
+    # Same images as docker-compose.test.yml
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nx_test
+          POSTGRES_USER: nx
+          POSTGRES_PASSWORD: nx
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U nx -d nx_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      NX_POSTGRES_URL: postgresql://nx:nx@127.0.0.1:55432/nx_test
+      NX_REDIS_URL: redis://127.0.0.1:56379/0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --group dev
+      - name: Unit tests
+        run: uv run pytest -m "not integration"
+      - name: Integration tests
+        run: uv run pytest -m integration

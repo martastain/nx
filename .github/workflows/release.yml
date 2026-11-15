@@ -1,0 +1,97 @@
+name: Publish a new version
+
+on:
+  push:
+    branches: [ "main" ]
+  # Manual release: fast-forward main to develop and release it
+  workflow_dispatch:
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+    with:
+      # A manual run releases develop; a push to main releases that commit
+      ref: ${{ github.event_name == 'workflow_dispatch' && 'develop' || github.sha }}
+
+  merge:
+    needs: checks
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.merge.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fast-forward main to develop
+        id: merge
+        run: |
+          version=$(git show origin/develop:pyproject.toml | sed -n 's/^version = "\(.*\)"$/\1/p')
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "::error::v$version is already released: bump the version on develop first"
+            exit 1
+          fi
+          if ! git merge --ff-only origin/develop; then
+            echo "::error::main has commits develop doesn't: merge main into develop first"
+            exit 1
+          fi
+          git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  pypi:
+    needs: [ checks, merge ]
+    # merge is skipped on a push to main
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    # Trusted publishing: pypi.org trusts this workflow and environment
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.merge.outputs.sha || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+      - name: Build nx-framework
+        run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # every push to main runs this, with or without a version bump
+          skip-existing: true
+
+  release:
+    needs: [ merge, pypi ]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.merge.outputs.sha || github.sha }}
+
+      - name: Get the version
+        id: get_version
+        uses: SebRollen/toml-action@v1.0.1
+        with:
+          file: 'pyproject.toml'
+          field: 'project.version'
+
+      - name: Create a release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.get_version.outputs.value }}
+          # on a manual run github.sha is the commit the run started from
+          commit: ${{ needs.merge.outputs.sha || github.sha }}
+          name: nx ${{ steps.get_version.outputs.value }}
+          allowUpdates: true
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
