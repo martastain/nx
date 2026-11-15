@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 import uuid
 
@@ -93,3 +94,158 @@ async def test_db_iterate_streams_rows() -> None:
         await nx.db.execute(f"DROP TABLE IF EXISTS {table_name}")
 
     assert [row["value"] for row in rows] == [1, 2, 3]
+
+
+async def test_on_commit_runs_hooks_after_the_outermost_commit() -> None:
+    calls: list[str] = []
+
+    async def hook(name: str) -> None:
+        # Runs on the same connection, no longer in a transaction
+        assert nx.db.is_in_transaction is False
+        calls.append(name)
+
+    async with nx.db.transaction():
+        await nx.db.on_commit(lambda: hook("outer"))
+        async with nx.db.transaction():
+            await nx.db.on_commit(lambda: hook("nested"))
+        assert calls == []
+
+    assert calls == ["outer", "nested"]
+
+
+async def test_on_commit_drops_hooks_on_rollback() -> None:
+    calls: list[str] = []
+
+    async def hook() -> None:
+        calls.append("hook")
+
+    async def failing_transaction() -> None:
+        async with nx.db.transaction():
+            await nx.db.on_commit(hook)
+            raise RuntimeError("rollback")
+
+    with pytest.raises(RuntimeError, match="rollback"):
+        await failing_transaction()
+
+    assert calls == []
+
+    # The hooks of a rolled back transaction don't leak into the next one
+    async with nx.db.transaction():
+        pass
+    assert calls == []
+
+
+async def test_on_commit_runs_at_once_outside_a_transaction() -> None:
+    calls: list[str] = []
+
+    async def hook() -> None:
+        calls.append("hook")
+
+    await nx.db.on_commit(hook)
+    assert calls == ["hook"]
+
+    # Holding a connection is not a transaction
+    async with nx.db.acquire():
+        await nx.db.on_commit(hook)
+        assert calls == ["hook", "hook"]
+
+
+async def test_on_commit_failing_hook_does_not_stop_the_others() -> None:
+    calls: list[str] = []
+
+    async def failing() -> None:
+        raise RuntimeError("hook failed")
+
+    async def hook() -> None:
+        calls.append("hook")
+
+    async with nx.db.transaction():
+        await nx.db.on_commit(failing)
+        await nx.db.on_commit(hook)
+
+    assert calls == ["hook"]
+
+
+async def test_on_commit_hook_can_create_an_index_concurrently() -> None:
+    table_name = f"test_db_hook_{uuid.uuid4().hex}"
+
+    async def create_index() -> None:
+        await nx.db.execute(
+            f"CREATE INDEX CONCURRENTLY {table_name}_idx ON {table_name}(value)"
+        )
+
+    try:
+        async with nx.db.transaction():
+            await nx.db.execute(f"CREATE TABLE {table_name} (value integer)")
+            await nx.db.on_commit(create_index)
+
+        rows = await nx.db.fetch(
+            "SELECT indexname FROM pg_indexes WHERE tablename = $1", table_name
+        )
+    finally:
+        await nx.db.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+    assert [row["indexname"] for row in rows] == [f"{table_name}_idx"]
+
+
+async def test_advisory_xact_lock_blocks_until_the_holder_commits() -> None:
+    key = f"test:{uuid.uuid4().hex}"
+    order: list[str] = []
+    holding = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder() -> None:
+        async with nx.db.transaction():
+            await nx.db.advisory_xact_lock(key)
+            holding.set()
+            await release.wait()
+            order.append("holder")
+
+    async def waiter() -> None:
+        await holding.wait()
+        async with nx.db.transaction():
+            await nx.db.advisory_xact_lock(key)
+            order.append("waiter")
+
+    tasks = [asyncio.create_task(holder()), asyncio.create_task(waiter())]
+    await holding.wait()
+    await asyncio.sleep(0.2)
+    assert order == []  # the waiter is blocked
+    release.set()
+    await asyncio.gather(*tasks)
+
+    assert order == ["holder", "waiter"]
+
+
+async def test_advisory_xact_lock_shared_locks_do_not_block_each_other() -> None:
+    key = f"test:{uuid.uuid4().hex}"
+
+    async with nx.db.transaction():
+        await nx.db.advisory_xact_lock(key, shared=True)
+        async with nx.db.transaction(force_new=True):
+            await asyncio.wait_for(
+                nx.db.advisory_xact_lock(key, shared=True), timeout=2
+            )
+
+
+async def test_advisory_xact_lock_requires_a_transaction() -> None:
+    with pytest.raises(RuntimeError, match="requires a transaction"):
+        await nx.db.advisory_xact_lock("test:no-transaction")
+
+
+async def test_db_iterate_sees_the_writes_of_its_transaction() -> None:
+    table_name = f"test_db_iterate_tx_{uuid.uuid4().hex}"
+
+    await nx.db.execute(f"CREATE TABLE {table_name} (value integer NOT NULL)")
+    try:
+        async with nx.db.transaction():
+            await nx.db.execute(f"INSERT INTO {table_name} VALUES (1), (2)")
+            values = []
+            async for row in nx.db.iterate(f"SELECT value FROM {table_name}"):
+                values.append(row["value"])
+                # The connection stays usable while the cursor is open
+                await nx.db.fetch("SELECT 1")
+    finally:
+        await nx.db.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+    assert sorted(values) == [1, 2]

@@ -3,7 +3,7 @@ __all__ = ["db"]
 import asyncio
 import datetime as dt
 import sys
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, Self, cast
@@ -22,7 +22,24 @@ _current_connection: ContextVar["PoolConnectionProxy | None"] = ContextVar(
     "_current_connection", default=None
 )
 
+CommitHook = Callable[[], Awaitable[Any]]
+
+# Hooks of the current (outermost) transaction, run after it commits
+_commit_hooks: ContextVar[list[CommitHook] | None] = ContextVar(
+    "_commit_hooks", default=None
+)
+
 _connection_lock = asyncio.Lock()
+
+
+async def _run_commit_hooks(hooks: list[CommitHook]) -> None:
+    # The data is already committed: one failing hook must not skip the others
+    # or turn a finished transaction into an error
+    for hook in hooks:
+        try:
+            await hook()
+        except Exception:
+            logger.traceback("Post-commit hook failed")
 
 
 def timestamptz_encoder(v: Any) -> str:
@@ -133,13 +150,57 @@ class DB:
         timeout: int | None = None,  # noqa: ASYNC109
         force_new: bool = False,
     ) -> AsyncIterator["PoolConnectionProxy"]:
-        """Acquire a connection from the pool and manage transaction state."""
+        """Acquire a connection from the pool and manage transaction state.
+
+        Inside a transaction, a nested block joins it: nothing is committed
+        until the outermost block ends.
+        """
         async with self.acquire(timeout=timeout, force_new=force_new) as connection:
             if connection.is_in_transaction():
                 yield connection
-            else:
+                return
+
+            hooks: list[CommitHook] = []
+            token = _commit_hooks.set(hooks)
+            try:
                 async with connection.transaction():
                     yield connection
+            finally:
+                _commit_hooks.reset(token)
+            # Only reached when the transaction committed. The connection is
+            # still the current one and no longer in a transaction, so hooks
+            # can run statements that refuse a transaction block
+            # (CREATE INDEX CONCURRENTLY, VACUUM).
+            await _run_commit_hooks(hooks)
+
+    async def on_commit(self, hook: CommitHook) -> None:
+        """Run `hook` after the current transaction commits (now if there is none).
+
+        Hooks can be added anywhere inside the transaction, also in nested
+        `transaction()` blocks, which join the outer one. They run in the
+        order they were added, after the outermost transaction commits, and
+        are dropped on rollback. An exception in a hook is logged and doesn't
+        stop the others: the data is committed by then.
+        """
+        hooks = _commit_hooks.get()
+        if hooks is not None and self.is_in_transaction:
+            hooks.append(hook)
+        else:
+            await hook()
+
+    async def advisory_xact_lock(self, key: str, *, shared: bool = False) -> None:
+        """Wait for an advisory lock on `key`, held until the transaction ends.
+
+        Keys are hashed strings, so all callers share one key space: use a
+        "<domain>:<id>" prefix to avoid clashes. Shared locks only block,
+        and are blocked by, exclusive ones.
+        """
+        fn = "pg_advisory_xact_lock_shared" if shared else "pg_advisory_xact_lock"
+        async with self.acquire() as conn:
+            # Outside a transaction the lock would be released immediately
+            if not conn.is_in_transaction():
+                raise RuntimeError("Advisory xact lock requires a transaction")
+            await conn.execute(f"SELECT {fn}(hashtextextended($1, 0))", key)
 
     @property
     def is_in_transaction(self) -> bool:
@@ -182,20 +243,31 @@ class DB:
         *args: Any,
         timeout: int | None = None,  # noqa: ASYNC109
     ) -> AsyncGenerator[asyncpg.Record]:
-        """Run a query and yield rows in batches using cursor.fetch()."""
+        """Run a query and yield its rows, read with a cursor.
+
+        Inside a transaction the query runs in it, so it sees the
+        transaction's own writes and locks. Otherwise it gets a connection
+        of its own, which `timeout` (seconds) waits for.
+        """
+        # No context manager and no ContextVar.set() here: a generator may
+        # be resumed in, or abandoned by, a different context
+
+        current = _current_connection.get()
+        if current is not None and current.is_in_transaction():
+            # Only then: a cursor opened outside a transaction would need its
+            # own, left open on the shared connection if the caller stops early
+            statement = await current.prepare(query)
+            async for record in statement.cursor(*args):
+                yield record
+            return
+
         if self._pool is None:
             await self._connect()
         assert self._pool is not None, "Database pool is not initialized"
 
         conn = await self._pool.acquire(timeout=timeout)
-
         try:
-            if not conn.is_in_transaction():
-                async with conn.transaction():
-                    statement = await conn.prepare(query)
-                    async for record in statement.cursor(*args):
-                        yield record
-            else:
+            async with conn.transaction():
                 statement = await conn.prepare(query)
                 async for record in statement.cursor(*args):
                     yield record
