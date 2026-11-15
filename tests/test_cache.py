@@ -103,7 +103,9 @@ def test_defaults_are_applied_to_the_key() -> None:
 def test_positional_and_keyword_calls_agree() -> None:
     builder = _make_key_builder(_sample, "u:{user_id}:{verbose}")
 
-    assert builder((5, True), {}) == builder((), {"user_id": 5, "verbose": True})
+    assert builder((5,), {"verbose": True}) == builder(
+        (), {"user_id": 5, "verbose": True}
+    )
 
 
 def test_self_is_excluded_from_the_key() -> None:
